@@ -17,7 +17,7 @@ def cross_entropy(inputs, targets):
     return torch.mean(torch.gather(negative_log_softmax_logits, -1, targets.unsqueeze(-1)))
 
 
-def clip_gradient(parameters, max_norm):
+def clip_gradient(parameters, max_norm, eps=1e-6):
     grads = [p.grad for p in parameters if p.grad is not None]
     norm = 0.0
 
@@ -25,6 +25,6 @@ def clip_gradient(parameters, max_norm):
         norm += (g**2).sum()
 
     norm = torch.sqrt(norm)
-    clip_coef = min(1, max_norm / (norm + 1e-6))
+    clip_coef = min(1, max_norm / (norm + eps))
     for g in grads:
         g *= clip_coef
