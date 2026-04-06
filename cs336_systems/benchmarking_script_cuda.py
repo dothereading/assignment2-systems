@@ -18,7 +18,6 @@ MODEL_CONFIGS = {
 }
 
 
-@nvtx.range("scaled dot product attention")
 def benchmark(model, optimizer, inputs, targets, mode, device, warmup_steps, num_steps):
     def step():
         with nvtx.range("computing forward step"):
@@ -43,6 +42,7 @@ def benchmark(model, optimizer, inputs, targets, mode, device, warmup_steps, num
         step()
         end = timeit.default_timer()
         times.append(end - start)
+    torch.cuda.cudart().cudaProfilerStop()
 
     avg = sum(times) / len(times)
     std = (sum((t - avg) ** 2 for t in times) / len(times)) ** 0.5
