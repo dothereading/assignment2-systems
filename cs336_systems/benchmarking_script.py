@@ -1,11 +1,13 @@
 import argparse
 import timeit
+from contextlib import nullcontext
 
 import pandas as pd
 import torch
 
 from cs336_basics.model import BasicsTransformerLM
 from cs336_basics.nn_utils import cross_entropy
+from cs336_basics.optimizer import AdamW
 
 MODEL_CONFIGS = {
     "small":  {"d_model": 768,  "d_ff": 3072,  "num_layers": 12, "num_heads": 12},
@@ -16,13 +18,21 @@ MODEL_CONFIGS = {
 }
 
 
-def benchmark(model, inputs, targets, mode, device, warmup_steps, num_steps):
+def benchmark(model, inputs, targets, mode, device, warmup_steps, num_steps, autocast_ctx=None, optimizer=None):
+    if autocast_ctx is None:
+        autocast_ctx = nullcontext
+
     def step():
-        logits = model(inputs)
-        if mode == "forward+backward":
-            B, S, V = logits.shape
-            loss = cross_entropy(logits.reshape(B * S, V), targets.reshape(B * S))
+        with autocast_ctx():
+            logits = model(inputs)
+            if mode in ("forward+backward", "train"):
+                B, S, V = logits.shape
+                loss = cross_entropy(logits.reshape(B * S, V), targets.reshape(B * S))
+        if mode in ("forward+backward", "train"):
             loss.backward()
+        if mode == "train" and optimizer is not None:
+            optimizer.step()
+            optimizer.zero_grad()
         if device == "cuda":
             torch.cuda.synchronize()
 
@@ -63,8 +73,12 @@ def main():
     parser.add_argument("--warmup_steps", type=int, default=5, help="Number of warm-up steps.")
     parser.add_argument("--num_steps", type=int, default=10, help="Number of timed steps.")
     parser.add_argument("--mode", type=str, default="forward+backward",
-                        choices=["forward", "forward+backward"],
-                        help="Whether to benchmark forward only or forward+backward.")
+                        choices=["forward", "forward+backward", "train"],
+                        help="forward: inference only. forward+backward: no optimizer. train: full step with AdamW.")
+    parser.add_argument("--mixed_precision", action="store_true",
+                        help="Use BF16 mixed precision via torch.autocast.")
+    parser.add_argument("--memory_profile", action="store_true",
+                        help="Run memory profiler and save snapshot as .pickle file.")
 
     # Sweep mode: run all model sizes and produce a table
     parser.add_argument("--sweep", action="store_true",
@@ -99,11 +113,64 @@ def run_single(args):
     inputs = torch.randint(0, args.vocab_size, (args.batch_size, args.context_length), device=args.device)
     targets = torch.randint(0, args.vocab_size, (args.batch_size, args.context_length), device=args.device)
 
-    avg, std = benchmark(model, inputs, targets, args.mode, args.device, args.warmup_steps, args.num_steps)
+    if args.mixed_precision:
+        autocast_ctx = lambda: torch.autocast(device_type=args.device, dtype=torch.bfloat16)
+    else:
+        autocast_ctx = nullcontext
 
+    optimizer = None
+    if args.mode == "train":
+        optimizer = AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
+
+    if args.memory_profile:
+        run_memory_profile(model, optimizer, inputs, targets, args)
+    else:
+        avg, std = benchmark(model, inputs, targets, args.mode, args.device, args.warmup_steps, args.num_steps, autocast_ctx=autocast_ctx, optimizer=optimizer)
+        size_label = args.model_size or "custom"
+        precision = "bf16" if args.mixed_precision else "fp32"
+        print(f"Model: {size_label} | Mode: {args.mode} | Context: {args.context_length} | Precision: {precision}")
+        print(f"Average time per step: {avg:.4f}s | Std dev: {std:.4f}s")
+
+
+def run_memory_profile(model, optimizer, inputs, targets, args):
+    if args.mixed_precision:
+        autocast_ctx = lambda: torch.autocast(device_type=args.device, dtype=torch.bfloat16)
+    else:
+        autocast_ctx = nullcontext
+
+    def step():
+        with autocast_ctx():
+            logits = model(inputs)
+            if args.mode in ("forward+backward", "train"):
+                B, S, V = logits.shape
+                loss = cross_entropy(logits.reshape(B * S, V), targets.reshape(B * S))
+        if args.mode in ("forward+backward", "train"):
+            loss.backward()
+        if args.mode == "train" and optimizer is not None:
+            optimizer.step()
+            optimizer.zero_grad()
+        if args.device == "cuda":
+            torch.cuda.synchronize()
+
+    # Warmup (1 step to keep it cheap)
+    step()
+
+    # Start memory recording
+    torch.cuda.memory._record_memory_history(max_entries=1000000)
+
+    # Run 1 profiled step
+    step()
+
+    # Save snapshot
     size_label = args.model_size or "custom"
-    print(f"Model: {size_label} | Mode: {args.mode} | Context: {args.context_length}")
-    print(f"Average time per step: {avg:.4f}s | Std dev: {std:.4f}s")
+    precision = "bf16" if args.mixed_precision else "fp32"
+    filename = f"results/memory_{size_label}_ctx{args.context_length}_{args.mode}_{precision}.pickle"
+    torch.cuda.memory._dump_snapshot(filename)
+    torch.cuda.memory._record_memory_history(enabled=None)
+
+    peak_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
+    print(f"Memory snapshot saved to: {filename}")
+    print(f"Peak memory allocated: {peak_mb:.1f} MB")
 
 
 def run_sweep(args):
@@ -123,7 +190,11 @@ def run_sweep(args):
         inputs = torch.randint(0, args.vocab_size, (args.batch_size, args.context_length), device=args.device)
         targets = torch.randint(0, args.vocab_size, (args.batch_size, args.context_length), device=args.device)
 
-        avg, std = benchmark(model, inputs, targets, args.mode, args.device, args.warmup_steps, args.num_steps)
+        if args.mixed_precision:
+            autocast_ctx = lambda: torch.autocast(device_type=args.device, dtype=torch.bfloat16)
+        else:
+            autocast_ctx = nullcontext
+        avg, std = benchmark(model, inputs, targets, args.mode, args.device, args.warmup_steps, args.num_steps, autocast_ctx=autocast_ctx)
         rows.append({"size": size_name, "avg_time_s": avg, "std_time_s": std})
 
         # Free GPU memory before next model
