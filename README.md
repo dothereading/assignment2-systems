@@ -68,10 +68,28 @@ Use `Dockerfile.cpu-dev` to run a Linux container with
 
 - [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
 
+### VS Code Dev Container (recommended)
+
+The easiest way to get started is with the
+[Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+extension for VS Code, which uses the included [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
+to build and configure the container automatically.
+
+1. Install the **Dev Containers** extension in VS Code.
+2. Open this repository in VS Code.
+3. When prompted, click **Reopen in Container** — or open the Command Palette
+   (`Cmd+Shift+P`) and run **Dev Containers: Reopen in Container**.
+
+VS Code will build the image (first time only), mount `cs336_systems/` and
+`tests/` as live volumes, and drop you into `/workspace` inside the container.
+Any edits you make to those folders are reflected immediately — no rebuild needed.
+
 ### Build the image
 
 ```sh
 docker build -f Dockerfile.cpu-dev -t cs336-systems-cpu .
+# or
+make build
 ```
 
 ### Run an interactive shell (with live source edits)
@@ -81,6 +99,8 @@ docker run --rm -it \
   -v "$(pwd)/cs336_systems:/workspace/cs336_systems" \
   -v "$(pwd)/tests:/workspace/tests" \
   cs336-systems-cpu
+# or
+make run
 ```
 
 Inside the container you can run Triton kernels on CPU by targeting `device="cpu"` in your kernel launches:
@@ -111,6 +131,12 @@ add_kernel[(16,)](x, y, out, 1024, BLOCK=64)
 # Inside the container — CUDA-gated Triton tests are skipped automatically;
 # pure-PyTorch and CPU-targeted tests run normally.
 uv run pytest tests/ -v
+```
+
+Or run them directly from the host without entering the container:
+
+```sh
+make test
 ```
 
 > **Note:** The CUDA-gated `test_flash_forward_pass_triton` /
