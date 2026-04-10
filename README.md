@@ -57,6 +57,67 @@ Python 3.12.10 (main, Apr  9 2025, 04:03:51) [Clang 20.1.0 ] on linux
 
 `uv run` installs dependencies automatically as dictated in the `pyproject.toml` file.
 
+## Local development on macOS (CPU-only Triton)
+
+Triton has no native macOS backend (no Metal, no CUDA).
+Use `Dockerfile.cpu-dev` to run a Linux container with
+[`triton-cpu`](https://pypi.org/project/triton-cpu/), which compiles
+`@triton.jit` kernels via LLVM on CPU — no GPU required.
+
+### Prerequisites
+
+- [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
+
+### Build the image
+
+```sh
+docker build -f Dockerfile.cpu-dev -t cs336-systems-cpu .
+```
+
+### Run an interactive shell (with live source edits)
+
+```sh
+docker run --rm -it \
+  -v "$(pwd)/cs336_systems:/workspace/cs336_systems" \
+  -v "$(pwd)/tests:/workspace/tests" \
+  cs336-systems-cpu
+```
+
+Inside the container you can run Triton kernels on CPU by targeting `device="cpu"` in your kernel launches:
+
+```python
+import triton
+import triton.language as tl
+import torch
+
+@triton.jit
+def add_kernel(x_ptr, y_ptr, out_ptr, N, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < N
+    x = tl.load(x_ptr + offsets, mask=mask)
+    y = tl.load(y_ptr + offsets, mask=mask)
+    tl.store(out_ptr + offsets, x + y, mask=mask)
+
+x = torch.ones(1024, device="cpu")
+y = torch.ones(1024, device="cpu")
+out = torch.empty_like(x)
+add_kernel[(16,)](x, y, out, 1024, BLOCK=64)
+```
+
+### Run the tests
+
+```sh
+# Inside the container — CUDA-gated Triton tests are skipped automatically;
+# pure-PyTorch and CPU-targeted tests run normally.
+uv run pytest tests/ -v
+```
+
+> **Note:** The CUDA-gated `test_flash_forward_pass_triton` /
+> `test_flash_backward_triton` tests will be skipped (`torch.cuda.is_available()`
+> returns `False`). Write companion CPU tests using `device="cpu"` to iterate
+> on kernel logic locally, then validate on a GPU node before submitting.
+
 ## Submitting
 
 To submit, run `./test_and_make_submission.sh` . This script will install your

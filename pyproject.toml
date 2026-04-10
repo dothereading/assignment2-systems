@@ -20,6 +20,13 @@ dependencies = [
     "tabulate>=0.10.0",
 ]
 
+[project.optional-dependencies]
+# CPU backend for Triton DSL — for development without a GPU.
+# Linux only; on macOS use via Docker (see README).
+cpu-dev = [
+    "triton-cpu>=3.2.0; sys_platform == 'linux'",
+]
+
 [build-system]
 requires = ["uv_build>=0.8.3,<0.9.0"]
 build-backend = "uv_build"

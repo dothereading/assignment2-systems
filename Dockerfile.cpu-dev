@@ -1,0 +1,40 @@
+# Dockerfile.cpu-dev
+# macOS local development of Triton DSL kernels — no GPU required.
+FROM python:3.12-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+WORKDIR /workspace
+
+# Copy dependency manifests first for better layer caching
+COPY pyproject.toml uv.lock ./
+COPY cs336-basics ./cs336-basics
+
+# Step 1 — CPU-only PyTorch (~800 MB vs ~2.5 GB for CUDA).
+# Done with pip so uv's resolver doesn't override it with the CUDA build.
+RUN pip install --no-cache-dir \
+    torch==2.6.0 \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Step 2 — triton-cpu provides the `triton` module backed by LLVM/CPU.
+# Installed before `uv sync` so uv sees triton as already satisfied.
+# CPU torch does NOT bundle triton, so there is no conflict here.
+RUN pip install --no-cache-dir triton-cpu
+
+# Step 3 — remaining project deps via uv (torch already in site-packages,
+# uv will skip it; pytorch CPU index given so version constraints resolve).
+RUN uv pip install --system \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    -e ./cs336-basics \
+    -e .
+
+# Copy source last so code edits don't bust the dependency cache layers
+COPY cs336_systems ./cs336_systems
+COPY tests ./tests
+COPY test_and_make_submission.sh ./
+
+CMD ["/bin/bash"]
