@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--context_length", type=int, default=256, help="Context length of LM.")
     parser.add_argument("--vocab_size", type=int, default=10000, help="Size of the vocabulary.")
     parser.add_argument("--theta", type=int, default=10000, help="Theta value for RoPE.")
+    parser.add_argument("--compiled", action='store_true')
 
     # Model config: either pick a preset or specify manually
     parser.add_argument("--model_size", type=str, default=None,
@@ -109,6 +110,8 @@ def run_single(args):
         d_ff=args.d_ff,
         rope_theta=args.theta,
     ).to(args.device)
+
+    model = torch.compile(model) if args.compiled else model
 
     inputs = torch.randint(0, args.vocab_size, (args.batch_size, args.context_length), device=args.device)
     targets = torch.randint(0, args.vocab_size, (args.batch_size, args.context_length), device=args.device)
@@ -186,6 +189,9 @@ def run_sweep(args):
             d_ff=config["d_ff"],
             rope_theta=args.theta,
         ).to(args.device)
+
+        if args.compiled:
+            model = torch.compile(model)
 
         inputs = torch.randint(0, args.vocab_size, (args.batch_size, args.context_length), device=args.device)
         targets = torch.randint(0, args.vocab_size, (args.batch_size, args.context_length), device=args.device)

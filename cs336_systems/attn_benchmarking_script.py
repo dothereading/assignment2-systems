@@ -1,4 +1,5 @@
 
+import argparse
 import itertools
 import timeit
 from datetime import datetime
@@ -13,6 +14,11 @@ SEQ_LEN = [256, 1024, 4096, 8192, 16384]
 BATCH = 8
 DEVICE = "cuda"
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--compiled", action="store_true")
+args = parser.parse_args()
+COMPILED = args.compiled
+
 results = []
 
 for d_model, seq_len in list(itertools.product(D_MODEL, SEQ_LEN)):
@@ -25,23 +31,24 @@ for d_model, seq_len in list(itertools.product(D_MODEL, SEQ_LEN)):
     try:
     # warmup
         for _ in range(10):
-            out = scaled_dot_product_attention(Q, K, V)
+            attn_fn = torch.compile(scaled_dot_product_attention) if COMPILED else scaled_dot_product_attention
+            out = attn_fn(Q, K, V)
             torch.cuda.synchronize()
 
         f_time_start = timeit.default_timer()
         for _ in range(100):
-            out = scaled_dot_product_attention(Q, K, V)
+            out = attn_fn(Q, K, V)
             torch.cuda.synchronize()
         f_time = timeit.default_timer() - f_time_start
 
         # Memory in use before backward starts (after a single forward).
-        out = scaled_dot_product_attention(Q, K, V)
+        out = attn_fn(Q, K, V)
         torch.cuda.synchronize()
         mem_before_bwd = torch.cuda.memory_allocated()
 
         b_time_start = timeit.default_timer()
         for _ in range(100):
-            out = scaled_dot_product_attention(Q, K, V)
+            out = attn_fn(Q, K, V)
             out.backward(gradient=torch.ones_like(out))
             torch.cuda.synchronize()
             Q.grad = K.grad = V.grad = None
@@ -69,7 +76,7 @@ df = pd.DataFrame(results)
 print("\n")
 print(df.to_markdown(index=False))
 
-out_path = Path(__file__).parent.parent / "results" / f"attn_benchmark_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+out_path = Path(__file__).parent.parent / "results" / f"attn_benchmark_{datetime.now().strftime('%Y%m%d_%H%M%S')}_comp_{COMPILED}.csv"
 df.to_csv(out_path, index=False)
 print(f"Saved to {out_path}")
 
