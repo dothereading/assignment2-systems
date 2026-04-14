@@ -34,24 +34,10 @@ class FlashAttn2(torch.autograd.Function):
 
                 S_ij = einsum(Q_i, K_j, "... b_q d, ... b_k d -> ... b_q b_k") / math.sqrt(d)
                 m_i_prev = m_i
-                if i == 0 and j == 1:
-                    print("S_ij\n\n")
-                    print(S_ij.shape)
-                    print(f"Dimension of max {torch.max(S_ij, dim=-1).values.shape}")
-                    print(f"Dimension of m_i {m_i.shape}")
 
                 m_i = torch.maximum(m_i, torch.max(S_ij, dim=-1).values)
                 P_i = torch.exp(S_ij - torch.unsqueeze(m_i, dim=-1))  # dimensions are sus
                 l_i = torch.exp(m_i_prev - m_i) * l_i + torch.sum(P_i, dim=-1)  # dim still sus
-                if i == 0 and j == 1:
-                    print(f"m_i : {m_i}")
-                    print(f"m_i_prev: {m_i_prev}")
-                    print(f"m_i diff: {m_i_prev - m_i}")
-                    print(f"m_i diff diag?: {torch.exp(m_i_prev - m_i).unsqueeze(dim=-1)}")
-                    print(f"diag_embed? {torch.exp(torch.diag_embed(m_i_prev - m_i))}")
-                    print(f"m_i diff diag shape?: {torch.exp(m_i_prev - m_i).unsqueeze(dim=-1).shape}")
-                    print(f"diag_embed shape? {torch.exp(torch.diag_embed(m_i_prev - m_i)).shape}")
-                    print(f"{torch.exp(torch.diag_embed(m_i_prev - m_i)) @ O_i}")
                 max_diag = torch.diag_embed(torch.exp(m_i_prev - m_i))
                 O_i = einsum(max_diag, O_i, "... b_q b_k, ... b_q d -> ... b_k d")
                 O_i += einsum(P_i, V_j, "... b_k b_q, ... b_q d -> ... b_k d")
@@ -63,12 +49,8 @@ class FlashAttn2(torch.autograd.Function):
             O_list.append(O_i)
             L_list.append(L_i)
 
-        print(f"O_list: {O_list}")
         O = torch.cat(O_list, dim=1)
         L = torch.cat(L_list, dim=1)
-
-        print(f"L dimensions: {L.shape}")
-        print(f"O dimensions: {O.shape}")
 
         ctx.save_for_backward(L, Q, K, V, O)
         ctx.is_causal = is_causal
