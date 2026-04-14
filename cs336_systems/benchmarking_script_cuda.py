@@ -33,11 +33,11 @@ from cs336_basics.optimizer import AdamW
 cs336_basics.model.scaled_dot_product_attention = annotated_scaled_dot_product_attention
 
 MODEL_CONFIGS = {
-    "small":  {"d_model": 768,  "d_ff": 3072,  "num_layers": 12, "num_heads": 12},
-    "medium": {"d_model": 1024, "d_ff": 4096,  "num_layers": 24, "num_heads": 16},
-    "large":  {"d_model": 1280, "d_ff": 5120,  "num_layers": 36, "num_heads": 20},
-    "xl":     {"d_model": 1600, "d_ff": 6400,  "num_layers": 48, "num_heads": 25},
-    "2.7B":   {"d_model": 2560, "d_ff": 10240, "num_layers": 32, "num_heads": 32},
+    "small": {"d_model": 768, "d_ff": 3072, "num_layers": 12, "num_heads": 12},
+    "medium": {"d_model": 1024, "d_ff": 4096, "num_layers": 24, "num_heads": 16},
+    "large": {"d_model": 1280, "d_ff": 5120, "num_layers": 36, "num_heads": 20},
+    "xl": {"d_model": 1600, "d_ff": 6400, "num_layers": 48, "num_heads": 25},
+    "2.7B": {"d_model": 2560, "d_ff": 10240, "num_layers": 32, "num_heads": 32},
 }
 
 
@@ -61,7 +61,7 @@ def benchmark(model, optimizer, inputs, targets, mode, device, warmup_steps, num
     print(f"  Warmup ({warmup_steps} steps)...")
     for i in range(warmup_steps):
         step()
-        print(f"    warmup {i+1}/{warmup_steps}")
+        print(f"    warmup {i + 1}/{warmup_steps}")
 
     torch.cuda.cudart().cudaProfilerStart()
 
@@ -72,7 +72,7 @@ def benchmark(model, optimizer, inputs, targets, mode, device, warmup_steps, num
         step()
         end = timeit.default_timer()
         times.append(end - start)
-        print(f"    step {i+1}/{num_steps} — {end - start:.4f}s")
+        print(f"    step {i + 1}/{num_steps} — {end - start:.4f}s")
 
     torch.cuda.cudart().cudaProfilerStop()
 
@@ -95,9 +95,13 @@ def main():
     parser.add_argument("--d_ff", type=int, default=3072)
     parser.add_argument("--warmup_steps", type=int, default=5)
     parser.add_argument("--num_steps", type=int, default=10)
-    parser.add_argument("--mode", type=str, default="forward",
-                        choices=["forward", "forward+backward", "train"],
-                        help="forward: inference only. forward+backward: no optimizer. train: full training step with AdamW.")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="forward",
+        choices=["forward", "forward+backward", "train"],
+        help="forward: inference only. forward+backward: no optimizer. train: full training step with AdamW.",
+    )
     args = parser.parse_args()
 
     if args.model_size:

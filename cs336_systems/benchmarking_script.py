@@ -10,11 +10,11 @@ from cs336_basics.nn_utils import cross_entropy
 from cs336_basics.optimizer import AdamW
 
 MODEL_CONFIGS = {
-    "small":  {"d_model": 768,  "d_ff": 3072,  "num_layers": 12, "num_heads": 12},
-    "medium": {"d_model": 1024, "d_ff": 4096,  "num_layers": 24, "num_heads": 16},
-    "large":  {"d_model": 1280, "d_ff": 5120,  "num_layers": 36, "num_heads": 20},
-    "xl":     {"d_model": 1600, "d_ff": 6400,  "num_layers": 48, "num_heads": 25},
-    "2.7B":   {"d_model": 2560, "d_ff": 10240, "num_layers": 32, "num_heads": 32},
+    "small": {"d_model": 768, "d_ff": 3072, "num_layers": 12, "num_heads": 12},
+    "medium": {"d_model": 1024, "d_ff": 4096, "num_layers": 24, "num_heads": 16},
+    "large": {"d_model": 1280, "d_ff": 5120, "num_layers": 36, "num_heads": 20},
+    "xl": {"d_model": 1600, "d_ff": 6400, "num_layers": 48, "num_heads": 25},
+    "2.7B": {"d_model": 2560, "d_ff": 10240, "num_layers": 32, "num_heads": 32},
 }
 
 
@@ -59,12 +59,16 @@ def main():
     parser.add_argument("--context_length", type=int, default=256, help="Context length of LM.")
     parser.add_argument("--vocab_size", type=int, default=10000, help="Size of the vocabulary.")
     parser.add_argument("--theta", type=int, default=10000, help="Theta value for RoPE.")
-    parser.add_argument("--compiled", action='store_true')
+    parser.add_argument("--compiled", action="store_true")
 
     # Model config: either pick a preset or specify manually
-    parser.add_argument("--model_size", type=str, default=None,
-                        choices=list(MODEL_CONFIGS.keys()),
-                        help="Use a preset model config from the assignment.")
+    parser.add_argument(
+        "--model_size",
+        type=str,
+        default=None,
+        choices=list(MODEL_CONFIGS.keys()),
+        help="Use a preset model config from the assignment.",
+    )
     parser.add_argument("--d_model", type=int, default=768)
     parser.add_argument("--num_layers", type=int, default=12)
     parser.add_argument("--num_heads", type=int, default=12)
@@ -73,17 +77,20 @@ def main():
     # Benchmarking
     parser.add_argument("--warmup_steps", type=int, default=5, help="Number of warm-up steps.")
     parser.add_argument("--num_steps", type=int, default=10, help="Number of timed steps.")
-    parser.add_argument("--mode", type=str, default="forward+backward",
-                        choices=["forward", "forward+backward", "train"],
-                        help="forward: inference only. forward+backward: no optimizer. train: full step with AdamW.")
-    parser.add_argument("--mixed_precision", action="store_true",
-                        help="Use BF16 mixed precision via torch.autocast.")
-    parser.add_argument("--memory_profile", action="store_true",
-                        help="Run memory profiler and save snapshot as .pickle file.")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="forward+backward",
+        choices=["forward", "forward+backward", "train"],
+        help="forward: inference only. forward+backward: no optimizer. train: full step with AdamW.",
+    )
+    parser.add_argument("--mixed_precision", action="store_true", help="Use BF16 mixed precision via torch.autocast.")
+    parser.add_argument(
+        "--memory_profile", action="store_true", help="Run memory profiler and save snapshot as .pickle file."
+    )
 
     # Sweep mode: run all model sizes and produce a table
-    parser.add_argument("--sweep", action="store_true",
-                        help="Run all model sizes and output a results table.")
+    parser.add_argument("--sweep", action="store_true", help="Run all model sizes and output a results table.")
 
     args = parser.parse_args()
 
@@ -128,7 +135,17 @@ def run_single(args):
     if args.memory_profile:
         run_memory_profile(model, optimizer, inputs, targets, args)
     else:
-        avg, std = benchmark(model, inputs, targets, args.mode, args.device, args.warmup_steps, args.num_steps, autocast_ctx=autocast_ctx, optimizer=optimizer)
+        avg, std = benchmark(
+            model,
+            inputs,
+            targets,
+            args.mode,
+            args.device,
+            args.warmup_steps,
+            args.num_steps,
+            autocast_ctx=autocast_ctx,
+            optimizer=optimizer,
+        )
         size_label = args.model_size or "custom"
         precision = "bf16" if args.mixed_precision else "fp32"
         print(f"Model: {size_label} | Mode: {args.mode} | Context: {args.context_length} | Precision: {precision}")
@@ -171,7 +188,7 @@ def run_memory_profile(model, optimizer, inputs, targets, args):
     torch.cuda.memory._dump_snapshot(filename)
     torch.cuda.memory._record_memory_history(enabled=None)
 
-    peak_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
+    peak_mb = torch.cuda.max_memory_allocated() / (1024**2)
     print(f"Memory snapshot saved to: {filename}")
     print(f"Peak memory allocated: {peak_mb:.1f} MB")
 
@@ -200,7 +217,9 @@ def run_sweep(args):
             autocast_ctx = lambda: torch.autocast(device_type=args.device, dtype=torch.bfloat16)
         else:
             autocast_ctx = nullcontext
-        avg, std = benchmark(model, inputs, targets, args.mode, args.device, args.warmup_steps, args.num_steps, autocast_ctx=autocast_ctx)
+        avg, std = benchmark(
+            model, inputs, targets, args.mode, args.device, args.warmup_steps, args.num_steps, autocast_ctx=autocast_ctx
+        )
         rows.append({"size": size_name, "avg_time_s": avg, "std_time_s": std})
 
         # Free GPU memory before next model

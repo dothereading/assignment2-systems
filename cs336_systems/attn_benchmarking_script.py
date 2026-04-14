@@ -1,4 +1,3 @@
-
 import argparse
 import itertools
 import timeit
@@ -29,7 +28,7 @@ for d_model, seq_len in list(itertools.product(D_MODEL, SEQ_LEN)):
     V = torch.randn((BATCH, seq_len, d_model), device=DEVICE, requires_grad=True)
 
     try:
-    # warmup
+        # warmup
         for _ in range(10):
             attn_fn = torch.compile(scaled_dot_product_attention) if COMPILED else scaled_dot_product_attention
             out = attn_fn(Q, K, V)
@@ -54,33 +53,36 @@ for d_model, seq_len in list(itertools.product(D_MODEL, SEQ_LEN)):
             Q.grad = K.grad = V.grad = None
         b_time = timeit.default_timer() - b_time_start - f_time
 
-        results.append({
-            "d_model": d_model,
-            "seq_len": seq_len,
-            "forward_s": f_time,
-            "backward_s": b_time,
-            "mem_before_bwd_MB": mem_before_bwd / (1024 ** 2),
-        })
+        results.append(
+            {
+                "d_model": d_model,
+                "seq_len": seq_len,
+                "forward_s": f_time,
+                "backward_s": b_time,
+                "mem_before_bwd_MB": mem_before_bwd / (1024**2),
+            }
+        )
 
     except torch.cuda.OutOfMemoryError:
         torch.cuda.empty_cache()
-        results.append({
-            "d_model": d_model,
-            "seq_len": seq_len,
-            "forward_s": "OOM",
-            "backward_s": "OOM",
-            "mem_before_bwd_MB": "OOM",
-        })
+        results.append(
+            {
+                "d_model": d_model,
+                "seq_len": seq_len,
+                "forward_s": "OOM",
+                "backward_s": "OOM",
+                "mem_before_bwd_MB": "OOM",
+            }
+        )
 
 df = pd.DataFrame(results)
 print("\n")
 print(df.to_markdown(index=False))
 
-out_path = Path(__file__).parent.parent / "results" / f"attn_benchmark_{datetime.now().strftime('%Y%m%d_%H%M%S')}_comp_{COMPILED}.csv"
+out_path = (
+    Path(__file__).parent.parent
+    / "results"
+    / f"attn_benchmark_{datetime.now().strftime('%Y%m%d_%H%M%S')}_comp_{COMPILED}.csv"
+)
 df.to_csv(out_path, index=False)
 print(f"Saved to {out_path}")
-
-
-    
-
-
