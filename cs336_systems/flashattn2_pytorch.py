@@ -8,7 +8,7 @@ B_q = 16
 
 class FlashAttn2(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, K: torch.Tensor, Q: torch.Tensor, V: torch.Tensor, is_causal: bool = False):
+    def forward(ctx, Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, is_causal: bool = False):
         *batch, N_q, d = Q.size()  # _ is batch, N is seq_len, d_k is dimensions
         *batch, N_k, d = K.size()  # _ is batch, N is seq_len, d_v is dimensions
 
@@ -53,11 +53,11 @@ class FlashAttn2(torch.autograd.Function):
                     print(f"diag_embed shape? {torch.exp(torch.diag_embed(m_i_prev - m_i)).shape}")
                     print(f"{torch.exp(torch.diag_embed(m_i_prev - m_i)) @ O_i}")
                 max_diag = torch.diag_embed(torch.exp(m_i_prev - m_i))
-                O_i = einsum(max_diag, O_i, "... b_q b_q, ... b_q d -> ... b_q d")
-                O_i += einsum(P_i, V_j, "... b_q b_q, ... b_q d -> ... b_q d")
+                O_i = einsum(max_diag, O_i, "... b_q b_k, ... b_q d -> ... b_k d")
+                O_i += einsum(P_i, V_j, "... b_k b_q, ... b_q d -> ... b_k d")
 
             # O_i, m_i, l_i here should be values for j = T_k
-            O_i = einsum(torch.linalg.inv(torch.diag_embed(l_i)), O_i, "... b_q b_q, ... b_q d -> ... b_q d")
+            O_i = einsum(torch.linalg.inv(torch.diag_embed(l_i)), O_i, "... b_q b_k, ... b_q d -> ... b_k d")
             L_i = m_i + torch.log(l_i)
 
             O_list.append(O_i)
