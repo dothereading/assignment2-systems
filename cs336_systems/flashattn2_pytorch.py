@@ -36,14 +36,16 @@ class FlashAttn2(torch.autograd.Function):
                 m_i_prev = m_i
 
                 m_i = torch.maximum(m_i, torch.max(S_ij, dim=-1).values)
-                P_i = torch.exp(S_ij - torch.unsqueeze(m_i, dim=-1))  # dimensions are sus
-                l_i = torch.exp(m_i_prev - m_i) * l_i + torch.sum(P_i, dim=-1)  # dim still sus
-                max_diag = torch.diag_embed(torch.exp(m_i_prev - m_i))
-                O_i = einsum(max_diag, O_i, "... b_q b_k, ... b_q d -> ... b_k d")
-                O_i += einsum(P_i, V_j, "... b_k b_q, ... b_q d -> ... b_k d")
+                P_i = torch.exp(S_ij - m_i.unsqueeze(dim=-1))
+                m_diff = m_i_prev - m_i
+                l_i = torch.exp(m_diff) * l_i + torch.sum(P_i, dim=-1)
+                # Use element-wise broadcasting to scale each row by value in diagonal
+                O_i = torch.exp(m_diff).unsqueeze(-1) * O_i + einsum(P_i, V_j, "... b_q b_k, ... b_k d -> ... b_q d")
 
             # O_i, m_i, l_i here should be values for j = T_k
-            O_i = einsum(torch.linalg.inv(torch.diag_embed(l_i)), O_i, "... b_q b_k, ... b_q d -> ... b_k d")
+            # Use element-wise broadcasting to scale each row by value in diagonal
+            # Reciprocal will be equivalent to inverse
+            O_i = (1 / l_i.unsqueeze(-1)) * O_i
             L_i = m_i + torch.log(l_i)
 
             O_list.append(O_i)
