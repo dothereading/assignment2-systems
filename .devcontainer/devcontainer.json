@@ -1,0 +1,25 @@
+{
+  "name": "CS336 Systems (CPU-Triton)",
+  "build": {
+    "dockerfile": "../Dockerfile.cpu-dev",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=${localWorkspaceFolder}/cs336_systems,target=/workspace/cs336_systems,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/tests,target=/workspace/tests,type=bind,consistency=cached"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  },
+  "postCreateCommand": "echo 'Container ready. Run: uv run pytest tests/ -v'",
+  "remoteUser": "root"
+}
